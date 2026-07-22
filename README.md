@@ -443,9 +443,3 @@ comerciais, mantendo os créditos. O texto completo está no arquivo
 - Rode sua primeira simulação seguindo o [Guia de uso](#guia-de-uso).
 - Dúvidas ou problemas? Abra uma [issue](https://github.com/edsilas/WinDebloat/issues)
   anexando os arquivos da pasta `Logs`.
-
-<div align="center">
-
-**[Voltar ao topo](#windebloat)**
-
-</div>
