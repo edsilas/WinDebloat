@@ -1,0 +1,9 @@
+# Artefatos gerados em tempo de execução (não versionar)
+Logs/
+Recovery/
+
+# Arquivos temporários comuns do Windows
+Thumbs.db
+desktop.ini
+*.tmp
+.DS_Store
