@@ -24,6 +24,8 @@ if "%BASEDIR:~-1%"=="\" set "BASEDIR=%BASEDIR:~0,-1%"
 set "CORE=%BASEDIR%\Core.ps1"
 set "LOGDIR=%BASEDIR%\Logs"
 set "BOOTLOG=%LOGDIR%\Launcher.log"
+REM Codigo de saida padrao; garante que %RC% nunca expanda vazio em :done.
+set "RC=0"
 
 if not exist "%LOGDIR%" mkdir "%LOGDIR%" >nul 2>&1
 

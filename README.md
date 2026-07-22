@@ -8,7 +8,6 @@
 [![Versão](https://img.shields.io/badge/Vers%C3%A3o-1.2.0-5C2D91?style=flat-square)](https://github.com/edsilas/WinDebloat/releases)
 
 
-
 ---
 
 **Aplica-se a:** Windows 10 · Windows 11 (64 bits)
@@ -273,7 +272,7 @@ Com a lista revisada e aprovada por você, é hora de aplicar:
    aparecer) e **Sim** (no Controle de Conta de Usuário).
 4. No menu, digite `2` e pressione **Enter**.
 5. O programa mostra um aviso de atenção e pede a confirmação final. Digite
-   **`SIM`** — em letras maiúsculas — e pressione **Enter**. Qualquer outra
+   **`SIM`** (maiúsculas ou minúsculas) e pressione **Enter**. Qualquer outra
    resposta cancela e volta ao menu, sem alterar nada.
 6. Aguarde a execução, acompanhando as etapas na tela, nesta ordem:
    1. **Backups** — criação do ponto de restauração, cópia das configurações e
@@ -380,7 +379,8 @@ política da empresa pode proibir alterações desse tipo.
 | A janela de permissão (UAC) não apareceu e o programa fechou sozinho | Clique com o botão direito em `Launcher.bat` e escolha **Executar como administrador** |
 | Apareceu "Core.ps1 nao encontrado" | Os arquivos foram separados ou o ZIP não foi extraído. Refaça a preparação em [Introdução](#introdução), mantendo tudo na mesma pasta |
 | Mensagem dizendo que o ponto de restauração não foi criado | A Restauração do Sistema está desligada no seu PC. O programa continua (os outros backups são feitos). Para ativar: **Iniciar** → digite "Criar um ponto de restauração" → selecione o disco **C:** → **Configurar** → **Ativar a proteção do sistema** → **OK** — e rode a ferramenta de novo |
-| Um ou outro app apareceu com "Falha ao remover" em vermelho | Normal em alguns casos: certas versões do Windows travam apps específicos. Nada de errado aconteceu — o item apenas permanece no sistema |
+| Um ou outro app apareceu com "Falha ao remover" em vermelho | Normal em alguns casos: certas versões do Windows travam apps específicos (por exemplo, o Dev Home, que retorna "erro não especificado"). Nada de errado aconteceu — o item apenas permanece no sistema |
+| Aviso amarelo: app "instalado apenas em outro perfil de usuário" | Em computadores com mais de uma conta, o Windows só permite remover os apps de cada usuário estando conectado na conta dele. Entre na outra conta e rode a ferramenta lá também |
 | Letras estranhas ou acentos trocados na janela preta | É apenas visual e não afeta o funcionamento. Os relatórios da pasta `Logs` ficam legíveis |
 | Um app removido voltou depois de uma grande atualização do Windows | Comportamento do próprio Windows em atualizações de versão. Rode o WinDebloat novamente após a atualização |
 | A janela fechou e não deu tempo de ler | Tudo fica gravado. Abra `Logs\Debloat.log` com o Bloco de Notas e leia com calma |
@@ -443,3 +443,4 @@ comerciais, mantendo os créditos. O texto completo está no arquivo
 - Rode sua primeira simulação seguindo o [Guia de uso](#guia-de-uso).
 - Dúvidas ou problemas? Abra uma [issue](https://github.com/edsilas/WinDebloat/issues)
   anexando os arquivos da pasta `Logs`.
+

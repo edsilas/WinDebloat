@@ -605,9 +605,11 @@ function Remove-TargetApp {
                 # visível no Menu Iniciar — e o provisioned (etapa seguinte)
                 # cobre os usuários futuros.
                 $fallbackOk = $false
+                $curFound   = $false
                 try {
                     $cur = Get-AppxPackage -Name $pkg.Name -ErrorAction SilentlyContinue
                     if ($cur) {
+                        $curFound = $true
                         $cur | Remove-AppxPackage -ErrorAction Stop
                         Write-Log "Removido (usuário atual; -AllUsers indisponível neste build): $($pkg.Name)" 'OK'
                         Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage (usuário atual)' -Result 'REMOVIDO'
@@ -617,8 +619,18 @@ function Remove-TargetApp {
                 } catch { }
 
                 if (-not $fallbackOk) {
-                    Write-Log "Falha ao remover $($pkg.Name): $allUsersErr" 'ERROR'
-                    Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage -AllUsers' -Result "ERRO: $allUsersErr"
+                    if (-not $curFound) {
+                        # -AllUsers falhou E o app não existe para o usuário atual:
+                        # o pacote pertence a outro perfil deste computador (ou é
+                        # um registro "staged" órfão). O Windows não permite
+                        # removê-lo a partir desta conta — não é uma falha real
+                        # da ferramenta, portanto registramos como aviso.
+                        Write-Log "Não removido: $($pkg.Name) está instalado apenas em outro perfil de usuário deste computador. Para removê-lo, execute a ferramenta conectado na conta desse usuário." 'WARN'
+                        Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage -AllUsers' -Result "NAO REMOVIDO (outro perfil de usuário): $allUsersErr"
+                    } else {
+                        Write-Log "Falha ao remover $($pkg.Name): $allUsersErr" 'ERROR'
+                        Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage -AllUsers' -Result "ERRO: $allUsersErr"
+                    }
                 }
             }
         }
