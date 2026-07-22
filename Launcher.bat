@@ -128,6 +128,7 @@ goto :menu
 echo.
 echo  [ATENCAO] O modo REAL ira remover aplicativos, otimizar servicos
 echo            e aplicar politicas.
+set "CONF="
 set /p "CONF=Digite SIM para confirmar: "
 if /I "%CONF%"=="SIM" goto :run_real
 echo Cancelado.
@@ -139,6 +140,7 @@ echo  [ATENCAO] O modo AGRESSIVO amplia os ajustes de servicos e aplica
 echo            configuracoes avancadas de desempenho. Tudo e reversivel
 echo            (ponto de restauracao + script em Recovery), mas recomenda-se
 echo            rodar a Simulacao agressiva antes.
+set "CONF="
 set /p "CONF=Digite SIM para confirmar: "
 if /I "%CONF%"=="SIM" goto :run_real_aggr
 echo Cancelado.

@@ -532,9 +532,15 @@ function Invoke-ServiceOptimization {
 
     $restoreLines = New-Object System.Collections.Generic.List[string]
     $restoreLines.Add('# Restauração dos serviços ajustados pelo WinDebloat (execução ' + $script:Stamp + ')')
-    $restoreLines.Add('# Como usar: clique com o botão direito neste arquivo > Executar com o PowerShell')
-    $restoreLines.Add('# (requer administrador). Cada linha devolve um serviço ao estado anterior.')
+    $restoreLines.Add('# Como usar: clique com o botão direito neste arquivo > Executar com o PowerShell.')
+    $restoreLines.Add('# O script solicita elevação (UAC) sozinho e mostra o resultado de cada serviço.')
     $restoreLines.Add('#requires -Version 5.1')
+    $restoreLines.Add('$id = [Security.Principal.WindowsIdentity]::GetCurrent()')
+    $restoreLines.Add('$pr = New-Object Security.Principal.WindowsPrincipal($id)')
+    $restoreLines.Add('if (-not $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {')
+    $restoreLines.Add('    Start-Process powershell.exe -Verb RunAs -ArgumentList (''-NoProfile -ExecutionPolicy Bypass -File "{0}"'' -f $MyInvocation.MyCommand.Path)')
+    $restoreLines.Add('    exit')
+    $restoreLines.Add('}')
 
     foreach ($entry in $script:ServiceTargets.GetEnumerator()) {
         $name    = $entry.Key
@@ -593,6 +599,8 @@ function Invoke-ServiceOptimization {
 
     if (-not $script:IsDryRun) {
         try {
+            $restoreLines.Add('Write-Host ""; Write-Host "Restauração concluída." -ForegroundColor Green')
+            $restoreLines.Add('Read-Host "Pressione Enter para fechar"')
             $restorePath = Join-Path $script:RecoveryDir ("Restaurar_Servicos_{0}.ps1" -f $script:Stamp)
             $restoreLines | Set-Content -LiteralPath $restorePath -Encoding UTF8
             Write-Log "Script de restauração de serviços salvo em: $restorePath" 'OK'
@@ -1106,16 +1114,18 @@ function Invoke-FinalValidation {
     }
 
     # 8.6 Nenhum serviço crítico pode ter o início DESABILITADO
+    $svcStartOk = $true
     foreach ($crit in @('wuauserv','WinDefend','mpssvc','Dnscache','Dhcp','wscsvc')) {
         try {
             $cs = Get-CimInstance -ClassName Win32_Service -Filter ("Name='{0}'" -f $crit) -ErrorAction SilentlyContinue
             if ($cs -and $cs.StartMode -eq 'Disabled') {
                 Write-Log ("ALERTA: serviço crítico '{0}' está com início DESABILITADO!" -f $crit) 'ERROR'
+                $svcStartOk = $false
                 $allOk = $false
             }
         } catch { }
     }
-    if ($allOk) { Write-Log 'OK: nenhum serviço crítico foi desabilitado.' 'OK' }
+    if ($svcStartOk) { Write-Log 'OK: nenhum serviço crítico foi desabilitado.' 'OK' }
 
     if ($allOk) {
         Write-Log 'Validação final: todos os componentes críticos verificados estão presentes.' 'OK'
