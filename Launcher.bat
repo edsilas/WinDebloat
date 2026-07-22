@@ -98,31 +98,49 @@ set "MODE=%~1"
 if /I "%MODE%"=="dry" goto :run_dry
 if /I "%MODE%"=="real" goto :run_real
 if /I "%MODE%"=="execute" goto :run_real
+if /I "%MODE%"=="dry-aggressive" goto :run_dry_aggr
+if /I "%MODE%"=="real-aggressive" goto :run_real_aggr
 
 :menu
 echo.
 echo ============================================
 echo    WinDebloat
 echo ============================================
-echo    [1] Simulacao (Dry Run) - nao altera nada   ^<-- recomendado primeiro
-echo    [2] Execucao real        - aplica remocoes
-echo    [3] Sair
+echo    [1] Simulacao padrao      - nao altera nada   ^<-- recomendado primeiro
+echo    [2] Simulacao agressiva   - nao altera nada
+echo    [3] Execucao real padrao
+echo    [4] Execucao real agressiva
+echo    [5] Sair
 echo ============================================
 echo    Desenvolvido por Edsilas
 echo.
 set "OPT="
-set /p "OPT= Escolha uma opcao [1/2/3]: "
+set /p "OPT= Escolha uma opcao [1/2/3/4/5]: "
 if "%OPT%"=="1" (set "FROMMENU=1" & goto :run_dry)
-if "%OPT%"=="2" (set "FROMMENU=1" & goto :confirm_real)
-if "%OPT%"=="3" exit /b 0
+if "%OPT%"=="2" (set "FROMMENU=1" & goto :run_dry_aggr)
+if "%OPT%"=="3" (set "FROMMENU=1" & goto :confirm_real)
+if "%OPT%"=="4" (set "FROMMENU=1" & goto :confirm_real_aggr)
+if "%OPT%"=="5" exit /b 0
 echo Opcao invalida.
 goto :menu
 
 :confirm_real
 echo.
-echo  [ATENCAO] O modo REAL ira remover aplicativos e aplicar politicas.
+echo  [ATENCAO] O modo REAL ira remover aplicativos, otimizar servicos
+echo            e aplicar politicas.
 set /p "CONF=Digite SIM para confirmar: "
 if /I "%CONF%"=="SIM" goto :run_real
+echo Cancelado.
+goto :menu
+
+:confirm_real_aggr
+echo.
+echo  [ATENCAO] O modo AGRESSIVO amplia os ajustes de servicos e aplica
+echo            configuracoes avancadas de desempenho. Tudo e reversivel
+echo            (ponto de restauracao + script em Recovery), mas recomenda-se
+echo            rodar a Simulacao agressiva antes.
+set /p "CONF=Digite SIM para confirmar: "
+if /I "%CONF%"=="SIM" goto :run_real_aggr
 echo Cancelado.
 goto :menu
 
@@ -133,9 +151,21 @@ call :log "Iniciando Core.ps1 em modo DRYRUN."
 set "RC=%errorlevel%"
 goto :done
 
+:run_dry_aggr
+call :log "Iniciando Core.ps1 em modo DRYRUN AGRESSIVO."
+"%PWSH%" -NoProfile -ExecutionPolicy Bypass -File "%CORE%" -DryRun -Aggressive -RootDir "%BASEDIR%"
+set "RC=%errorlevel%"
+goto :done
+
 :run_real
 call :log "Iniciando Core.ps1 em modo EXECUTE."
 "%PWSH%" -NoProfile -ExecutionPolicy Bypass -File "%CORE%" -Execute -RootDir "%BASEDIR%"
+set "RC=%errorlevel%"
+goto :done
+
+:run_real_aggr
+call :log "Iniciando Core.ps1 em modo EXECUTE AGRESSIVO."
+"%PWSH%" -NoProfile -ExecutionPolicy Bypass -File "%CORE%" -Execute -Aggressive -RootDir "%BASEDIR%"
 set "RC=%errorlevel%"
 goto :done
 

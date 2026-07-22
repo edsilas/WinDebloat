@@ -64,7 +64,8 @@ param(
     [switch]$DryRun,
     [switch]$Execute,
     [string]$RootDir = $PSScriptRoot,
-    [switch]$SkipRestorePoint
+    [switch]$SkipRestorePoint,
+    [switch]$Aggressive
 )
 
 # ==========================================================================
@@ -80,6 +81,10 @@ if (-not $DryRun -and -not $Execute) { $DryRun = $true }
 if ($DryRun -and $Execute) { $Execute = $false }
 $script:Mode      = if ($Execute) { 'EXECUTE' } else { 'DRYRUN' }
 $script:IsDryRun  = -not $Execute
+
+# Modo agressivo: amplia a otimização de serviços e aplica ajustes avançados.
+# Vale tanto para simulação quanto para execução real.
+$script:IsAggressive = [bool]$Aggressive
 
 # Detecção do mecanismo PowerShell em uso.
 #   'Core'    = PowerShell 7+ (pwsh)  -> Appx/Dism via camada de compatibilidade
@@ -111,6 +116,7 @@ $script:Stats = [ordered]@{
     NaoEncontr  = 0
     Erros       = 0
     Politicas   = 0
+    Servicos    = 0
 }
 
 #endregion
@@ -408,6 +414,219 @@ function Test-IsProtected {
 #endregion
 
 # ==========================================================================
+# REGIÃO 4B - SERVIÇOS: ANÁLISE, OTIMIZAÇÃO E MODO AGRESSIVO
+# ==========================================================================
+#region Services
+
+<#
+    Filosofia (a mesma dos aplicativos):
+    - Curadoria explícita: só entram na lista serviços com ganho conhecido e
+      risco baixo. Nada é ajustado "por dedução".
+    - Guarda de proteção: mesmo que um serviço essencial entrasse por engano
+      na lista, o filtro regex abaixo o barra.
+    - Preferência por 'Manual' (inicia sob demanda) em vez de 'Disabled':
+      preserva compatibilidade — se algo precisar do serviço, ele sobe sozinho.
+      'Disabled' é reservado a casos sem efeito colateral conhecido.
+    - Reversão tripla: ponto de restauração + estado anterior registrado no log
+      + script pronto de restauração gerado em Recovery\.
+#>
+
+# Alvos de otimização. 'Start' = modo padrão ($null = não tocar no padrão);
+# 'Aggressive' = modo agressivo. Ambos respeitam Dry Run e a guarda abaixo.
+$script:ServiceTargets = [ordered]@{
+    'DiagTrack'        = @{ Start = 'Manual';   Aggressive = 'Disabled'; Motivo = 'Telemetria (Experiências do Usuário Conectado)' }
+    'dmwappushservice' = @{ Start = 'Manual';   Aggressive = 'Manual';   Motivo = 'Roteamento de mensagens WAP Push' }
+    'MapsBroker'       = @{ Start = 'Manual';   Aggressive = 'Manual';   Motivo = 'Gerenciador de mapas baixados (app Mapas removido)' }
+    'Fax'              = @{ Start = 'Manual';   Aggressive = 'Disabled'; Motivo = 'Serviço de fax' }
+    'RetailDemo'       = @{ Start = 'Disabled'; Aggressive = 'Disabled'; Motivo = 'Modo de demonstração de loja' }
+    'WMPNetworkSvc'    = @{ Start = 'Manual';   Aggressive = 'Manual';   Motivo = 'Compartilhamento de rede do Windows Media Player' }
+    'RemoteRegistry'   = @{ Start = 'Disabled'; Aggressive = 'Disabled'; Motivo = 'Registro remoto (endurecimento de segurança)' }
+    'XblAuthManager'   = @{ Start = 'Manual';   Aggressive = 'Manual';   Motivo = 'Autenticação Xbox Live (apps Xbox removidos)' }
+    'XblGameSave'      = @{ Start = 'Manual';   Aggressive = 'Manual';   Motivo = 'Salvamento de jogos Xbox Live' }
+    'XboxNetApiSvc'    = @{ Start = 'Manual';   Aggressive = 'Manual';   Motivo = 'Rede Xbox Live' }
+    # --- Exclusivos do modo agressivo (Start = $null) ---
+    'SysMain'          = @{ Start = $null; Aggressive = 'Manual'; Motivo = 'Pré-carregamento de apps (Superfetch); dispensável em SSD' }
+    'WerSvc'           = @{ Start = $null; Aggressive = 'Manual'; Motivo = 'Relatório de Erros do Windows' }
+    'lfsvc'            = @{ Start = $null; Aggressive = 'Manual'; Motivo = 'Serviço de geolocalização' }
+    'TrkWks'           = @{ Start = $null; Aggressive = 'Manual'; Motivo = 'Rastreamento de links distribuídos' }
+    'WalletService'    = @{ Start = $null; Aggressive = 'Manual'; Motivo = 'Serviço de carteira (Wallet)' }
+}
+
+# Guarda de proteção: serviços que JAMAIS são tocados, mesmo se listados acima
+# por engano. Cobre atualização, segurança, rede, áudio, shell, licenciamento,
+# busca, impressão, Bluetooth, energia, perfis e infraestrutura RPC/COM.
+$script:ProtectedServicesRegex = @(
+    '^wuauserv$','^UsoSvc$','^BITS$','^DoSvc$','^WaaSMedicSvc$','^TrustedInstaller$','^msiserver$',
+    '^WinDefend$','^WdNisSvc$','^Sense$','^SecurityHealthService$','^wscsvc$','^MpsSvc$','^BFE$',
+    '^Dnscache$','^Dhcp$','^NlaSvc$','^netprofm$','^LanmanWorkstation$','^LanmanServer$','^Wcmsvc$','^WlanSvc$','^WwanSvc$',
+    '^RpcSs$','^RpcEptMapper$','^DcomLaunch$','^BrokerInfrastructure$','^CoreMessagingRegistrar$','^SystemEventsBroker$',
+    '^Audiosrv$','^AudioEndpointBuilder$','^CryptSvc$','^EventLog$','^Schedule$','^Themes$','^ProfSvc$','^UserManager$',
+    '^Winmgmt$','^Power$','^PlugPlay$','^Spooler$','^StateRepository$','^AppXSvc$','^ClipSVC$','^LicenseManager$',
+    '^WSearch$','^VSS$','^swprv$','^sppsvc$','^W32Time$','^KeyIso$','^SamSs$','^LSM$','^SENS$','^ShellHWDetection$',
+    '^bthserv$','^BTAGService$','^CDPSvc$','^TokenBroker$','^VaultSvc$','^WbioSrvc$','^camsvc$','^XboxGipSvc$'
+) -join '|'
+
+function Invoke-SystemAnalysis {
+    <#
+        Análise SOMENTE LEITURA do estado do sistema: serviços, processos e
+        programas de inicialização. Nada é alterado aqui, em nenhum modo.
+        Um resumo vai para o log e o relatório completo para Logs\Analise_*.txt.
+    #>
+    Write-Log '=== FASE: ANÁLISE DO SISTEMA (somente leitura) ===' 'STEP'
+    $report = New-Object System.Collections.Generic.List[string]
+
+    try {
+        $svcs    = @(Get-CimInstance -ClassName Win32_Service -ErrorAction Stop)
+        $running = @($svcs | Where-Object { $_.State -eq 'Running' })
+        $auto    = @($svcs | Where-Object { $_.StartMode -eq 'Auto' })
+        Write-Log ("Serviços: {0} instalados, {1} em execução, {2} com início automático." -f $svcs.Count, $running.Count, $auto.Count) 'INFO'
+        $report.Add('===== SERVIÇOS (nome, estado, tipo de início) =====')
+        foreach ($s in ($svcs | Sort-Object State, Name)) {
+            $report.Add(("{0,-42} {1,-9} {2}" -f $s.Name, $s.State, $s.StartMode))
+        }
+    } catch { Write-Log "Análise de serviços indisponível: $($_.Exception.Message)" 'WARN' }
+
+    try {
+        $procs = @(Get-Process -ErrorAction Stop | Sort-Object WorkingSet64 -Descending)
+        Write-Log ("Processos em execução: {0}. Os dez maiores consumidores de memória estão no relatório." -f $procs.Count) 'INFO'
+        $report.Add(''); $report.Add('===== 10 PROCESSOS COM MAIOR USO DE MEMÓRIA =====')
+        foreach ($p in ($procs | Select-Object -First 10)) {
+            $report.Add(("{0,-38} {1,10:N0} MB" -f $p.ProcessName, ($p.WorkingSet64 / 1MB)))
+        }
+    } catch { Write-Log "Análise de processos indisponível: $($_.Exception.Message)" 'WARN' }
+
+    try {
+        $report.Add(''); $report.Add('===== PROGRAMAS DE INICIALIZAÇÃO (informativo; NÃO são alterados) =====')
+        $startupCount = 0
+        foreach ($rk in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+                          'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run')) {
+            if (-not (Test-Path -LiteralPath $rk)) { continue }
+            $props = Get-ItemProperty -LiteralPath $rk -ErrorAction SilentlyContinue
+            if (-not $props) { continue }
+            foreach ($pp in $props.PSObject.Properties) {
+                if ($pp.Name -notmatch '^PS(Path|ParentPath|ChildName|Drive|Provider)$') {
+                    $report.Add(("[{0}] {1} = {2}" -f $rk, $pp.Name, $pp.Value))
+                    $startupCount++
+                }
+            }
+        }
+        Write-Log ("Programas de inicialização detectados: {0} (informativo; a ferramenta não os altera por serem escolhas pessoais)." -f $startupCount) 'INFO'
+    } catch { Write-Log "Análise de inicialização indisponível: $($_.Exception.Message)" 'WARN' }
+
+    try {
+        $dst = Join-Path $script:LogDir ("Analise_Sistema_{0}.txt" -f $script:Stamp)
+        $report | Set-Content -LiteralPath $dst -Encoding UTF8
+        Write-Log "Relatório completo da análise salvo em: $dst" 'OK'
+    } catch { Write-Log "Não foi possível salvar o relatório de análise: $($_.Exception.Message)" 'WARN' }
+}
+
+function Invoke-ServiceOptimization {
+    <#
+        Ajusta o tipo de início dos serviços da lista curada, respeitando
+        Dry Run e a guarda de proteção. Antes de qualquer alteração real,
+        gera em Recovery\ um script de restauração com o estado anterior
+        exato de cada serviço (incluindo início automático atrasado).
+    #>
+    $modeTxt = if ($script:IsAggressive) { 'MODO AGRESSIVO' } else { 'modo padrão' }
+    Write-Log ("=== FASE: OTIMIZAÇÃO DE SERVIÇOS ({0}) ===" -f $modeTxt) 'STEP'
+
+    $restoreLines = New-Object System.Collections.Generic.List[string]
+    $restoreLines.Add('# Restauração dos serviços ajustados pelo WinDebloat (execução ' + $script:Stamp + ')')
+    $restoreLines.Add('# Como usar: clique com o botão direito neste arquivo > Executar com o PowerShell')
+    $restoreLines.Add('# (requer administrador). Cada linha devolve um serviço ao estado anterior.')
+    $restoreLines.Add('#requires -Version 5.1')
+
+    foreach ($entry in $script:ServiceTargets.GetEnumerator()) {
+        $name    = $entry.Key
+        $desired = if ($script:IsAggressive) { $entry.Value.Aggressive } else { $entry.Value.Start }
+        if (-not $desired) { continue }  # alvo exclusivo do modo agressivo
+
+        if ($name -match $script:ProtectedServicesRegex) {
+            Write-Log "PROTEGIDO (serviço essencial; ignorado): $name" 'WARN'
+            $script:Stats.Protegidos++
+            continue
+        }
+
+        $svc = Get-CimInstance -ClassName Win32_Service -Filter ("Name='{0}'" -f $name) -ErrorAction SilentlyContinue
+        if (-not $svc) {
+            Write-Log "Serviço não existe neste sistema: $name" 'INFO'
+            continue
+        }
+
+        # Estado atual + flag de início automático atrasado (para restauração fiel).
+        $curMode = $svc.StartMode
+        $delayed = $false
+        try {
+            $rp = Get-ItemProperty -LiteralPath ("HKLM:\SYSTEM\CurrentControlSet\Services\{0}" -f $name) -ErrorAction SilentlyContinue
+            if ($rp -and $rp.PSObject.Properties['DelayedAutostart']) { $delayed = ($rp.DelayedAutostart -eq 1) }
+        } catch { }
+        $scStart = switch ($curMode) {
+            'Auto'     { if ($delayed) { 'delayed-auto' } else { 'auto' } }
+            'Manual'   { 'demand' }
+            'Disabled' { 'disabled' }
+            default    { 'demand' }
+        }
+        $restoreLines.Add(("sc.exe config `"{0}`" start= {1} | Out-Null; Write-Host 'Restaurado: {0} -> {1}'" -f $name, $scStart))
+
+        if ($curMode -eq $desired) {
+            Write-Log ("Já no estado desejado: {0} (início: {1})" -f $name, $curMode) 'INFO'
+            continue
+        }
+
+        if ($script:IsDryRun) {
+            Write-Log ("[SIMULAÇÃO] Serviço {0}: início {1} -> {2} ({3})" -f $name, $curMode, $desired, $entry.Value.Motivo) 'DRYRUN'
+            $script:Stats.Servicos++
+            continue
+        }
+
+        try {
+            Set-Service -Name $name -StartupType $desired -ErrorAction Stop
+            if ($desired -eq 'Disabled' -and $svc.State -eq 'Running') {
+                Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
+            }
+            Write-Log ("Serviço ajustado: {0} (início: {1} -> {2}) - {3}" -f $name, $curMode, $desired, $entry.Value.Motivo) 'OK'
+            $script:Stats.Servicos++
+        } catch {
+            Write-Log ("Falha ao ajustar serviço {0}: {1}" -f $name, $_.Exception.Message) 'ERROR'
+        }
+    }
+
+    if (-not $script:IsDryRun) {
+        try {
+            $restorePath = Join-Path $script:RecoveryDir ("Restaurar_Servicos_{0}.ps1" -f $script:Stamp)
+            $restoreLines | Set-Content -LiteralPath $restorePath -Encoding UTF8
+            Write-Log "Script de restauração de serviços salvo em: $restorePath" 'OK'
+        } catch {
+            Write-Log "Não foi possível salvar o script de restauração: $($_.Exception.Message)" 'WARN'
+        }
+    }
+}
+
+function Set-AggressiveTweaks {
+    <#
+        Ajustes avançados de registro, aplicados APENAS no modo agressivo.
+        Todos reversíveis pelos arquivos .reg exportados em Recovery\ e pelo
+        ponto de restauração. Respeitam Dry Run via Set-RegValue.
+    #>
+    if (-not $script:IsAggressive) { return }
+    Write-Log '=== FASE: AJUSTES AVANÇADOS (MODO AGRESSIVO) ===' 'STEP'
+
+    # Telemetria no nível mínimo suportado pela edição (1 = Básico/Obrigatório;
+    # 0 só tem efeito em Enterprise/Education — usar 1 evita falsa sensação).
+    Set-RegValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name 'AllowTelemetry' -Value 1
+
+    # Game DVR / captura em segundo plano: consome CPU e GPU continuamente,
+    # mesmo sem uso. A Game Bar já foi removida na fase de aplicativos.
+    Set-RegValue -Path 'HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -Value 0
+    Set-RegValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -Value 0
+    Set-RegValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR' -Name 'AllowGameDVR' -Value 0
+
+    Write-Log 'Ajustes avançados concluídos (reversíveis via Recovery\ e ponto de restauração).' 'INFO'
+}
+
+#endregion
+
+# ==========================================================================
 # REGIÃO 5 - RECUPERAÇÃO (RESTORE POINT + EXPORT DE REGISTRO)
 # ==========================================================================
 #region Recovery
@@ -439,6 +658,13 @@ function New-RecoveryArtifacts {
         'HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
         'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
         'HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+        'HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer'
+        # Chaves tocadas pelos ajustes avançados (modo agressivo). Exportar
+        # sempre é inofensivo: chave inexistente é simplesmente ignorada.
+        'HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection'
+        'HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR'
+        'HKCU\System\GameConfigStore'
+        'HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR'
     )
     foreach ($k in $keysToExport) {
         $safe = ($k -replace '[\\:]', '_')
@@ -879,6 +1105,18 @@ function Invoke-FinalValidation {
         Write-Log 'INFO: não foi possível consultar o WinRE.' 'WARN'
     }
 
+    # 8.6 Nenhum serviço crítico pode ter o início DESABILITADO
+    foreach ($crit in @('wuauserv','WinDefend','mpssvc','Dnscache','Dhcp','wscsvc')) {
+        try {
+            $cs = Get-CimInstance -ClassName Win32_Service -Filter ("Name='{0}'" -f $crit) -ErrorAction SilentlyContinue
+            if ($cs -and $cs.StartMode -eq 'Disabled') {
+                Write-Log ("ALERTA: serviço crítico '{0}' está com início DESABILITADO!" -f $crit) 'ERROR'
+                $allOk = $false
+            }
+        } catch { }
+    }
+    if ($allOk) { Write-Log 'OK: nenhum serviço crítico foi desabilitado.' 'OK' }
+
     if ($allOk) {
         Write-Log 'Validação final: todos os componentes críticos verificados estão presentes.' 'OK'
     } else {
@@ -901,6 +1139,7 @@ function Main {
     Write-Log " Desenvolvido por Edsilas | Apache License 2.0" 'INFO'
     Write-Log (" PowerShell: {0} ({1})" -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition) 'INFO'
     Write-Log (" Modo: {0}" -f $script:Mode) $modeLevel
+    Write-Log (" Otimização: {0}" -f $(if ($script:IsAggressive) { 'AGRESSIVA' } else { 'padrão' })) $modeLevel
     Write-Log " Raiz: $script:RootDir" 'INFO'
     Write-Log '=====================================================' 'INFO'
 
@@ -927,15 +1166,20 @@ function Main {
         return 4
     }
 
-    Write-PhaseProgress -Step 1 -Total 5 -Status 'Preparando artefatos de recuperação'
+    Write-PhaseProgress -Step 1 -Total 7 -Status 'Análise do sistema'
+    Invoke-SystemAnalysis
+    Write-PhaseProgress -Step 2 -Total 7 -Status 'Preparando artefatos de recuperação'
     New-RecoveryArtifacts
-    Write-PhaseProgress -Step 2 -Total 5 -Status 'Removendo aplicativos'
+    Write-PhaseProgress -Step 3 -Total 7 -Status 'Removendo aplicativos'
     Invoke-AppRemoval
-    Write-PhaseProgress -Step 3 -Total 5 -Status 'Aplicando políticas anti-reinstalação'
+    Write-PhaseProgress -Step 4 -Total 7 -Status 'Otimizando serviços'
+    Invoke-ServiceOptimization
+    Write-PhaseProgress -Step 5 -Total 7 -Status 'Aplicando políticas anti-reinstalação'
     Set-AntiReinstallPolicy
-    Write-PhaseProgress -Step 4 -Total 5 -Status 'Aplicando políticas ao perfil padrão'
+    Set-AggressiveTweaks
+    Write-PhaseProgress -Step 6 -Total 7 -Status 'Aplicando políticas ao perfil padrão'
     Set-DefaultUserPolicy
-    Write-PhaseProgress -Step 5 -Total 5 -Status 'Validação final'
+    Write-PhaseProgress -Step 7 -Total 7 -Status 'Validação final'
     $valOk = Invoke-FinalValidation
     try { Write-Progress -Id 0 -Activity ("WinDebloat [{0}]" -f $script:Mode) -Completed } catch { }
 
@@ -946,6 +1190,7 @@ function Main {
     Write-Log ("   Simulados.....: {0}" -f $script:Stats.Simulados) 'INFO'
     Write-Log ("   Protegidos....: {0}" -f $script:Stats.Protegidos) 'INFO'
     Write-Log ("   Não encontr...: {0}" -f $script:Stats.NaoEncontr) 'INFO'
+    Write-Log ("   Serviços......: {0}" -f $script:Stats.Servicos) 'INFO'
     Write-Log ("   Políticas.....: {0}" -f $script:Stats.Politicas) 'INFO'
     Write-Log ("   Erros.........: {0}" -f $script:Stats.Erros) 'INFO'
     Write-Log '=====================================================' 'INFO'

@@ -1,3 +1,5 @@
+<div align="center">
+
 # WinDebloat
 
 **Deixe seu Windows mais limpo, com segurança**
@@ -6,7 +8,9 @@
 [![Plataforma](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows&logoColor=white)](#requisitos)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-5391FE?style=flat-square&logo=powershell&logoColor=white)](#requisitos)
 [![Versão](https://img.shields.io/badge/Vers%C3%A3o-1.2.0-5C2D91?style=flat-square)](https://github.com/edsilas/WinDebloat/releases)
+[![Autor](https://img.shields.io/badge/Desenvolvido%20por-Edsilas-5C2D91?style=flat-square)](#licença-e-autoria)
 
+</div>
 
 ---
 
@@ -23,6 +27,7 @@ Windows.
 - [Requisitos](#requisitos)
 - [Introdução](#introdução)
 - [Referência do Launcher](#referência-do-launcher)
+- [Modos de otimização (padrão e agressivo)](#modos-de-otimização-padrão-e-agressivo)
 - [Guia de uso](#guia-de-uso)
 - [Reverter alterações](#reverter-alterações)
 - [Perguntas frequentes](#perguntas-frequentes)
@@ -161,41 +166,47 @@ Em seguida, uma janela preta se abre com este menu:
 ============================================
    WinDebloat
 ============================================
-   [1] Simulacao (Dry Run) - nao altera nada   <-- recomendado primeiro
-   [2] Execucao real        - aplica remocoes
-   [3] Sair
+   [1] Simulacao padrao      - nao altera nada   <-- recomendado primeiro
+   [2] Simulacao agressiva   - nao altera nada
+   [3] Execucao real padrao
+   [4] Execucao real agressiva
+   [5] Sair
 ============================================
    Desenvolvido por Edsilas
 
- Escolha uma opcao [1/2/3]:
+ Escolha uma opcao [1/2/3/4/5]:
 ```
 
 Para escolher, digite o número da opção e pressione **Enter**.
 
 > [!NOTE]
-> Ao final da opção 1 ou 2, o programa **não fecha**: ele mostra o resultado e
+> Ao final das opções 1 a 4, o programa **não fecha**: ele mostra o resultado e
 > volta automaticamente ao menu, permitindo uma nova escolha. Para encerrar,
-> use sempre a opção 3.
+> use sempre a opção 5.
 
-### Opção 1 — Simulação (Dry Run)
+### Opções 1 e 2 — Simulações (Dry Run)
 
 Um "ensaio geral": o programa percorre todo o processo e mostra na tela, linha
-por linha, exatamente o que faria — mas **não altera nada** no computador. É por
-aqui que você deve começar, sempre. Ao terminar, o programa volta ao menu. O
-passo a passo completo está em
+por linha, exatamente o que faria — mas **não altera nada** no computador.
+A opção 1 simula o modo padrão; a opção 2 simula o **modo agressivo** (veja
+[Modos de otimização](#modos-de-otimização-padrão-e-agressivo)). Comece sempre
+pela simulação do modo que pretende usar. Ao terminar, o programa volta ao
+menu. O passo a passo completo está em
 [Etapa 1: rodar a simulação](#etapa-1-rodar-a-simulação-obrigatória-antes-de-tudo).
 
-### Opção 2 — Execução real
+### Opções 3 e 4 — Execuções reais
 
-A limpeza de verdade: cria os backups, remove os apps e aplica os bloqueios de
-reinstalação. Exige uma confirmação extra (digitar `SIM`) como trava contra
-execuções acidentais. Ao terminar, o programa volta ao menu. O passo a passo
-completo está em
+A limpeza de verdade: analisa o sistema, cria os backups, remove os apps,
+otimiza os serviços e aplica os bloqueios de reinstalação. A opção 3 usa o
+modo padrão (conservador); a opção 4 usa o **modo agressivo**, com um aviso de
+atenção reforçado. Ambas exigem uma confirmação extra (digitar `SIM`) como
+trava contra execuções acidentais, e ambas voltam ao menu ao terminar. O passo
+a passo completo está em
 [Etapa 3: executar a limpeza](#etapa-3-executar-a-limpeza-de-verdade).
 
-### Opção 3 — Sair
+### Opção 5 — Sair
 
-Encerra o programa. É a **única forma de fechar o Launcher**: as opções 1 e 2
+Encerra o programa. É a **única forma de fechar o Launcher**: as demais opções
 sempre retornam ao menu ao final. Nenhuma alteração é feita ao sair.
 
 ### Modo direto (opcional)
@@ -204,13 +215,65 @@ O Launcher também aceita o modo direto, sem menu. Abra o Prompt de Comando na
 pasta do programa e digite:
 
 ```
-Launcher.bat dry     (simulação)
-Launcher.bat real    (execução real)
+Launcher.bat dry               (simulação padrão)
+Launcher.bat dry-aggressive    (simulação agressiva)
+Launcher.bat real              (execução real padrão)
+Launcher.bat real-aggressive   (execução real agressiva)
 ```
 
 O funcionamento e as confirmações são os mesmos. A diferença é que, no modo
 direto, o programa **encerra ao final** (com o código de resultado), em vez de
 voltar ao menu — comportamento adequado para uso em scripts e automação.
+
+---
+
+## Modos de otimização (padrão e agressivo)
+
+Além de remover aplicativos, o WinDebloat agora **analisa e otimiza serviços**
+do Windows, em dois níveis à sua escolha:
+
+### O que a análise do sistema faz
+
+Antes de qualquer alteração, uma fase **somente leitura** examina o estado do
+computador: quantos serviços existem e estão em execução, os dez processos que
+mais consomem memória e quais programas iniciam junto com o Windows. O resumo
+aparece na tela e o relatório completo é salvo em `Logs\Analise_Sistema_*.txt`.
+
+> [!NOTE]
+> Os programas de inicialização são apenas **relatados**, nunca alterados —
+> são escolhas pessoais suas (antivírus, mensageiros, drivers), e mexer neles
+> automaticamente poderia causar mais problemas do que benefícios.
+
+### Modo padrão (conservador)
+
+Ajusta uma lista curada de serviços dispensáveis — telemetria, fax, modo de
+demonstração de loja, serviços da Xbox (cujos apps já foram removidos), entre
+outros — preferindo o tipo de início **Manual**: o serviço deixa de consumir
+recursos, mas **sobe sozinho se algo precisar dele**, preservando total
+compatibilidade.
+
+### Modo agressivo
+
+Faz tudo o que o padrão faz e vai além: amplia a lista de serviços (Superfetch,
+Relatório de Erros, geolocalização, entre outros), desativa por completo a
+telemetria dispensável e a captura de tela/vídeo em segundo plano do Game DVR
+(que consome CPU e GPU continuamente, mesmo sem uso), e reduz a coleta de
+diagnóstico ao mínimo suportado pela sua edição do Windows.
+
+### As mesmas proteções valem para os dois modos
+
+- **Guarda de proteção de serviços**: Windows Update, Defender, Firewall, rede,
+  áudio, impressão, Bluetooth, busca do Menu Iniciar e dezenas de outros
+  serviços essenciais estão em uma lista intocável — mesmo que entrassem por
+  engano na lista de ajustes, seriam barrados.
+- **Reversão tripla**: ponto de restauração, estado anterior de cada serviço
+  registrado no log, e um **script pronto de restauração**
+  (`Recovery\Restaurar_Servicos_*.ps1`) que devolve cada serviço exatamente ao
+  estado em que estava — incluindo início automático atrasado.
+- **Simulação para os dois modos**: as opções 1 e 2 do menu mostram tudo antes,
+  sem alterar nada.
+- **Validação reforçada**: ao final, além das checagens existentes, a ferramenta
+  confirma que **nenhum serviço crítico ficou desabilitado**.
 
 ---
 
@@ -224,14 +287,15 @@ A simulação mostra tudo o que a ferramenta faria, sem tocar em nada. Siga:
 2. Se o aviso azul do SmartScreen aparecer, clique em **Mais informações** e
    depois em **Executar assim mesmo**.
 3. Na janela do Controle de Conta de Usuário, clique em **Sim**.
-4. No menu, digite `1` e pressione **Enter**.
+4. No menu, digite `1` (simulação do modo padrão) ou `2` (simulação do modo
+   agressivo) e pressione **Enter**.
 5. Aguarde. As mensagens vão passando na tela; a simulação costuma levar de
    alguns segundos a poucos minutos. Não feche a janela durante o processo.
 6. Ao final, aparece um **resumo** com os totais: quantos apps seriam
-   removidos, quantos estão protegidos, quantos não existem no seu computador
-   e quantas configurações seriam ajustadas.
+   removidos, quantos serviços seriam otimizados, quantos itens estão
+   protegidos e quantas configurações seriam ajustadas.
 7. Quando aparecer a mensagem de conclusão, pressione **qualquer tecla**. O
-   programa **volta ao menu principal**: escolha `3` para sair, ou deixe a
+   programa **volta ao menu principal**: escolha `5` para sair, ou deixe a
    janela aberta enquanto revisa o relatório na próxima etapa.
 
 > [!NOTE]
@@ -270,7 +334,8 @@ Com a lista revisada e aprovada por você, é hora de aplicar:
    `Launcher.bat`** novamente.
 3. Passe pelos mesmos avisos: **Executar assim mesmo** (se o SmartScreen
    aparecer) e **Sim** (no Controle de Conta de Usuário).
-4. No menu, digite `2` e pressione **Enter**.
+4. No menu, digite `3` (modo padrão) ou `4` (modo agressivo) e pressione
+   **Enter**. Use o mesmo modo que você simulou e revisou.
 5. O programa mostra um aviso de atenção e pede a confirmação final. Digite
    **`SIM`** (maiúsculas ou minúsculas) e pressione **Enter**. Qualquer outra
    resposta cancela e volta ao menu, sem alterar nada.
@@ -286,7 +351,7 @@ Com a lista revisada e aprovada por você, é hora de aplicar:
 7. Ao final, o **resumo** mostra o que foi feito. Se a última mensagem indicar
    que a execução foi concluída, está tudo certo.
 8. Pressione **qualquer tecla**. O programa volta ao menu principal — digite
-   `3` e pressione **Enter** para encerrar.
+   `5` e pressione **Enter** para encerrar.
 
 ### Etapa 4: depois da limpeza
 
@@ -318,6 +383,13 @@ leva segundos.
 Na pasta `Recovery` há arquivos cujo nome começa com `Reg_`. Dê **duplo clique**
 em cada um deles e confirme clicando em **Sim** nas duas perguntas que o Windows
 fizer. Isso devolve as configurações alteradas ao estado original.
+
+### Restaurar os serviços
+
+Também na pasta `Recovery`, o arquivo `Restaurar_Servicos_<data>.ps1` devolve
+**cada serviço ajustado exatamente ao estado em que estava** antes da execução.
+Para usá-lo: clique com o **botão direito** no arquivo e escolha
+**Executar com o PowerShell** (confirme o pedido de administrador, se aparecer).
 
 ### Voltar o sistema inteiro no tempo
 
@@ -414,8 +486,9 @@ organizado em regiões numeradas e comentado em português. Em resumo:
 | Item | Detalhes |
 | --- | --- |
 | Compatibilidade | Windows PowerShell 5.1 (nativo do Windows) e PowerShell 7+ (preferido automaticamente pelo Launcher, quando instalado) |
-| Execução direta do núcleo | `pwsh -File .\Core.ps1 -DryRun \| -Execute [-RootDir <pasta>] [-SkipRestorePoint]` — sem parâmetros, o padrão é a simulação |
+| Execução direta do núcleo | `pwsh -File .\Core.ps1 -DryRun \| -Execute [-Aggressive] [-RootDir <pasta>] [-SkipRestorePoint]` — sem parâmetros, o padrão é a simulação; `-Aggressive` ativa o modo agressivo em qualquer combinação |
 | Personalizar a lista de remoção | Edite o mapa `$TargetApps` no `Core.ps1`; para preservar um app, apague a linha correspondente antes de executar |
+| Personalizar os serviços | Edite o mapa `$ServiceTargets` no `Core.ps1` (colunas `Start` = modo padrão, `Aggressive` = modo agressivo); serviços do filtro `$ProtectedServicesRegex` jamais são tocados |
 | Mecanismo de remoção | Dois níveis: usuários atuais e pacotes provisionados (novos usuários) |
 | Anti-reinstalação | Políticas em HKLM, HKCU e no perfil padrão |
 | Proteção | Filtro por expressões regulares como última linha de defesa contra remoções indevidas |
@@ -444,3 +517,8 @@ comerciais, mantendo os créditos. O texto completo está no arquivo
 - Dúvidas ou problemas? Abra uma [issue](https://github.com/edsilas/WinDebloat/issues)
   anexando os arquivos da pasta `Logs`.
 
+<div align="center">
+
+**[Voltar ao topo](#windebloat)**
+
+</div>
