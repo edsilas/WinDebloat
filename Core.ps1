@@ -154,6 +154,26 @@ function Write-Log {
     }
 }
 
+function Write-PhaseProgress {
+    <#
+        Exibe a barra de progresso GERAL (fases do processo) via Write-Progress.
+        Write-Progress é nativo do PS 5.1 e do PS 7, renderiza apenas no console
+        e não interfere nos logs. Envolvido em try/catch: a barra é cosmética e
+        jamais pode derrubar a execução (mesma filosofia do logging).
+    #>
+    param(
+        [Parameter(Mandatory)][int]$Step,
+        [Parameter(Mandatory)][int]$Total,
+        [Parameter(Mandatory)][string]$Status
+    )
+    try {
+        $pct = [int](($Step / $Total) * 100)
+        Write-Progress -Id 0 -Activity ("WinDebloat [{0}]" -f $script:Mode) `
+            -Status ("Fase {0} de {1}: {2}" -f $Step, $Total, $Status) `
+            -PercentComplete $pct
+    } catch { }
+}
+
 function Write-RemovedRecord {
     <#
         Registra em RemovedApps.log um item processado, com método e resultado.
@@ -622,11 +642,21 @@ function Remove-TargetApp {
 }
 
 function Invoke-AppRemoval {
-    <# Itera todo o mapa de alvos. #>
+    <# Itera todo o mapa de alvos, com barra de progresso por aplicativo. #>
     Write-Log '=== FASE: REMOÇÃO DE APLICATIVOS ===' 'STEP'
+    $total = $script:TargetApps.Count
+    $i = 0
     foreach ($entry in $script:TargetApps.GetEnumerator()) {
+        $i++
+        # Barra secundária (aninhada à geral). Cosmética: nunca derruba a execução.
+        try {
+            Write-Progress -Id 1 -ParentId 0 -Activity 'Removendo aplicativos' `
+                -Status ("({0}/{1}) {2}" -f $i, $total, $entry.Key) `
+                -PercentComplete ([int](($i / $total) * 100))
+        } catch { }
         Remove-TargetApp -FriendlyName $entry.Key -Patterns $entry.Value
     }
+    try { Write-Progress -Id 1 -ParentId 0 -Activity 'Removendo aplicativos' -Completed } catch { }
 }
 
 #endregion
@@ -858,11 +888,17 @@ function Main {
         return 4
     }
 
+    Write-PhaseProgress -Step 1 -Total 5 -Status 'Preparando artefatos de recuperação'
     New-RecoveryArtifacts
+    Write-PhaseProgress -Step 2 -Total 5 -Status 'Removendo aplicativos'
     Invoke-AppRemoval
+    Write-PhaseProgress -Step 3 -Total 5 -Status 'Aplicando políticas anti-reinstalação'
     Set-AntiReinstallPolicy
+    Write-PhaseProgress -Step 4 -Total 5 -Status 'Aplicando políticas ao perfil padrão'
     Set-DefaultUserPolicy
+    Write-PhaseProgress -Step 5 -Total 5 -Status 'Validação final'
     $valOk = Invoke-FinalValidation
+    try { Write-Progress -Id 0 -Activity ("WinDebloat [{0}]" -f $script:Mode) -Completed } catch { }
 
     # --- Relatório final ---
     Write-Log '=====================================================' 'INFO'
