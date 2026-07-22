@@ -476,7 +476,13 @@ function New-RecoveryArtifacts {
 
     try {
         if (-not (Test-Path $sr)) { New-Item -Path $sr -Force | Out-Null }
-        $prevFreq = (Get-ItemProperty -Path $sr -Name $freqName -ErrorAction SilentlyContinue).$freqName
+        # Leitura segura sob StrictMode (correção para PS 5.1): acessar uma
+        # propriedade inexistente do resultado lança PropertyNotFoundException
+        # no Windows PowerShell 5.1. Verificamos a existência via PSObject antes.
+        $srProps = Get-ItemProperty -Path $sr -ErrorAction SilentlyContinue
+        if ($srProps -and $srProps.PSObject.Properties[$freqName]) {
+            $prevFreq = $srProps.$freqName
+        }
         New-ItemProperty -Path $sr -Name $freqName -Value 0 -PropertyType DWord -Force | Out-Null
         $freqSet = $true
 
@@ -591,8 +597,29 @@ function Remove-TargetApp {
                 Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage -AllUsers' -Result 'REMOVIDO'
                 $script:Stats.Removidos++
             } catch {
-                Write-Log "Falha ao remover $($pkg.Name): $($_.Exception.Message)" 'ERROR'
-                Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage -AllUsers' -Result "ERRO: $($_.Exception.Message)"
+                $allUsersErr = $_.Exception.Message
+                # Fallback (comum no Windows 10): pacotes em estado "staged"
+                # falham na remoção -AllUsers com 0x80070002 ("arquivo não
+                # encontrado"), embora estejam instalados para o usuário atual.
+                # Nesse caso, removemos a instalação do usuário atual — que é a
+                # visível no Menu Iniciar — e o provisioned (etapa seguinte)
+                # cobre os usuários futuros.
+                $fallbackOk = $false
+                try {
+                    $cur = Get-AppxPackage -Name $pkg.Name -ErrorAction SilentlyContinue
+                    if ($cur) {
+                        $cur | Remove-AppxPackage -ErrorAction Stop
+                        Write-Log "Removido (usuário atual; -AllUsers indisponível neste build): $($pkg.Name)" 'OK'
+                        Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage (usuário atual)' -Result 'REMOVIDO'
+                        $script:Stats.Removidos++
+                        $fallbackOk = $true
+                    }
+                } catch { }
+
+                if (-not $fallbackOk) {
+                    Write-Log "Falha ao remover $($pkg.Name): $allUsersErr" 'ERROR'
+                    Write-RemovedRecord -App $pkg.Name -Method 'Remove-AppxPackage -AllUsers' -Result "ERRO: $allUsersErr"
+                }
             }
         }
     }
