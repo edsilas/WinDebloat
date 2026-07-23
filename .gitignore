@@ -9,3 +9,4 @@ Config.psd1
 Thumbs.db
 desktop.ini
 *.tmp
+.DS_Store
