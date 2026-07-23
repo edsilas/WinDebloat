@@ -113,11 +113,16 @@ $script:Stats = [ordered]@{
     Removidos   = 0
     Simulados   = 0
     Protegidos  = 0
+    Preservados = 0
     NaoEncontr  = 0
     Erros       = 0
     Politicas   = 0
     Servicos    = 0
 }
+
+# Preferências do usuário (preenchidas por Read-UserConfig, se Config.psd1 existir)
+$script:PreserveApps     = @()
+$script:PreserveServices = @()
 
 #endregion
 
@@ -225,6 +230,80 @@ function Invoke-NativeQuiet {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try { & $Command } finally { $ErrorActionPreference = $prev }
+}
+
+function Test-PendingReboot {
+    <#
+        Detecta reinicialização pendente por atualizações do Windows, pelas
+        chaves oficiais de estado. Executar remoções nesse estado disputa o
+        armazém de componentes com o Windows Update — a execução real aborta.
+    #>
+    foreach ($p in @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+    )) {
+        if (Test-Path -LiteralPath $p) { return $true }
+    }
+    return $false
+}
+
+function Read-UserConfig {
+    <#
+        Lê o arquivo OPCIONAL Config.psd1 (na mesma pasta do Core.ps1) com as
+        preferências do usuário, via Import-PowerShellDataFile — nativo e
+        seguro: avalia apenas dados, nunca executa código.
+
+        Chaves aceitas:
+          PreservarApps     = lista de nomes amigáveis de $TargetApps a NÃO remover
+          PreservarServicos = lista de nomes de serviços de $ServiceTargets a NÃO ajustar
+
+        Retorna $false se o arquivo existir e for inválido: nesse caso a
+        execução aborta, porque prosseguir ignorando as preferências poderia
+        remover exatamente o que o usuário pediu para manter.
+    #>
+    $cfgPath = Join-Path $PSScriptRoot 'Config.psd1'
+    if (-not (Test-Path -LiteralPath $cfgPath)) {
+        Write-Log 'Config.psd1 não encontrado; usando as listas padrão (arquivo opcional; veja Config.exemplo.psd1).' 'INFO'
+        return $true
+    }
+
+    try {
+        $cfg = Import-PowerShellDataFile -LiteralPath $cfgPath -ErrorAction Stop
+    } catch {
+        Write-Log "Config.psd1 inválido: $($_.Exception.Message)" 'ERROR'
+        Write-Log 'Corrija ou renomeie o arquivo e execute novamente. Abortando para respeitar suas preferências.' 'ERROR'
+        return $false
+    }
+
+    foreach ($k in @($cfg.Keys)) {
+        if ($k -notin @('PreservarApps', 'PreservarServicos')) {
+            Write-Log "Config.psd1: chave desconhecida ignorada: '$k'" 'WARN'
+        }
+    }
+    if ($cfg.ContainsKey('PreservarApps')) {
+        $script:PreserveApps = @(@($cfg['PreservarApps']) | Where-Object { $_ })
+    }
+    if ($cfg.ContainsKey('PreservarServicos')) {
+        $script:PreserveServices = @(@($cfg['PreservarServicos']) | Where-Object { $_ })
+    }
+
+    if ($script:PreserveApps.Count -gt 0) {
+        Write-Log ("Config.psd1: {0} app(s) a preservar: {1}" -f $script:PreserveApps.Count, ($script:PreserveApps -join ', ')) 'INFO'
+        foreach ($p in $script:PreserveApps) {
+            if (-not $script:TargetApps.Contains($p)) {
+                Write-Log ("Config.psd1: '{0}' não corresponde a nenhum app da lista de alvos (verifique a grafia em Config.exemplo.psd1)." -f $p) 'WARN'
+            }
+        }
+    }
+    if ($script:PreserveServices.Count -gt 0) {
+        Write-Log ("Config.psd1: {0} serviço(s) a preservar: {1}" -f $script:PreserveServices.Count, ($script:PreserveServices -join ', ')) 'INFO'
+        foreach ($p in $script:PreserveServices) {
+            if (-not $script:ServiceTargets.Contains($p)) {
+                Write-Log ("Config.psd1: '{0}' não corresponde a nenhum serviço da lista de alvos." -f $p) 'WARN'
+            }
+        }
+    }
+    return $true
 }
 
 function Import-CompatModule {
@@ -547,6 +626,13 @@ function Invoke-ServiceOptimization {
         $desired = if ($script:IsAggressive) { $entry.Value.Aggressive } else { $entry.Value.Start }
         if (-not $desired) { continue }  # alvo exclusivo do modo agressivo
 
+        # Preferência do usuário (Config.psd1): não tocar neste serviço.
+        if ($script:PreserveServices.Count -gt 0 -and ($script:PreserveServices -contains $name)) {
+            Write-Log ("PRESERVADO (Config.psd1): serviço {0}" -f $name) 'INFO'
+            $script:Stats.Preservados++
+            continue
+        }
+
         if ($name -match $script:ProtectedServicesRegex) {
             Write-Log "PROTEGIDO (serviço essencial; ignorado): $name" 'WARN'
             $script:Stats.Protegidos++
@@ -801,12 +887,9 @@ function Remove-TargetApp {
 
     # ---- 6.1 Pacotes instalados (perfis atuais) ----
     foreach ($pat in $Patterns) {
-        $pkgs = @()
-        try {
-            $pkgs = Get-AppxPackage -AllUsers -Name $pat -ErrorAction SilentlyContinue
-        } catch {
-            Write-Log "Erro ao consultar pacotes '$pat': $($_.Exception.Message)" 'ERROR'
-        }
+        # Filtro em memória sobre o cache montado em Invoke-AppRemoval:
+        # mesma semântica de -Name (curinga via -like), sem custo de chamada.
+        $pkgs = @($script:PkgCache | Where-Object { $_.Name -like $pat })
 
         foreach ($pkg in $pkgs) {
             $foundAny = $true
@@ -872,13 +955,7 @@ function Remove-TargetApp {
 
     # ---- 6.2 Provisioned packages (novos usuários futuros) ----
     foreach ($pat in $Patterns) {
-        $prov = @()
-        try {
-            $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-                    Where-Object { $_.DisplayName -like $pat }
-        } catch {
-            Write-Log "Erro ao consultar provisioned '$pat': $($_.Exception.Message)" 'ERROR'
-        }
+        $prov = @($script:ProvCache | Where-Object { $_.DisplayName -like $pat })
 
         foreach ($pp in $prov) {
             $foundAny = $true
@@ -917,6 +994,28 @@ function Remove-TargetApp {
 function Invoke-AppRemoval {
     <# Itera todo o mapa de alvos, com barra de progresso por aplicativo. #>
     Write-Log '=== FASE: REMOÇÃO DE APLICATIVOS ===' 'STEP'
+
+    # --- Cache de inventário (desempenho) ---
+    # Uma única consulta a cada fonte substitui ~50 chamadas (uma por padrão).
+    # No PowerShell 7, cada chamada atravessa a camada de compatibilidade
+    # (remoting), tornando este cache a maior otimização de tempo da fase.
+    # O fallback por usuário atual continua consultando ao vivo, pois precisa
+    # do estado real no momento da falha.
+    $script:PkgCache  = @()
+    $script:ProvCache = @()
+    try {
+        $script:PkgCache = @(Get-AppxPackage -AllUsers -ErrorAction Stop)
+        Write-Log ("Inventário em cache: {0} pacotes instalados (todos os usuários)." -f $script:PkgCache.Count) 'INFO'
+    } catch {
+        Write-Log "Falha ao montar cache de pacotes instalados: $($_.Exception.Message)" 'ERROR'
+    }
+    try {
+        $script:ProvCache = @(Get-AppxProvisionedPackage -Online -ErrorAction Stop)
+        Write-Log ("Inventário em cache: {0} pacotes provisionados." -f $script:ProvCache.Count) 'INFO'
+    } catch {
+        Write-Log "Provisioned packages indisponíveis nesta execução: $($_.Exception.Message)" 'WARN'
+    }
+
     $total = $script:TargetApps.Count
     $i = 0
     foreach ($entry in $script:TargetApps.GetEnumerator()) {
@@ -927,6 +1026,14 @@ function Invoke-AppRemoval {
                 -Status ("({0}/{1}) {2}" -f $i, $total, $entry.Key) `
                 -PercentComplete ([int](($i / $total) * 100))
         } catch { }
+
+        # Preferência do usuário (Config.psd1): pula o app inteiro.
+        if ($script:PreserveApps.Count -gt 0 -and ($script:PreserveApps -contains $entry.Key)) {
+            Write-Log ("PRESERVADO (Config.psd1): {0}" -f $entry.Key) 'INFO'
+            $script:Stats.Preservados++
+            continue
+        }
+
         Remove-TargetApp -FriendlyName $entry.Key -Patterns $entry.Value
     }
     try { Write-Progress -Id 1 -ParentId 0 -Activity 'Removendo aplicativos' -Completed } catch { }
@@ -1158,6 +1265,22 @@ function Main {
         return 2
     }
 
+    # Preferências do usuário (Config.psd1 opcional). Arquivo presente e
+    # inválido aborta: prosseguir poderia remover o que ele pediu para manter.
+    if (-not (Read-UserConfig)) { return 6 }
+
+    # Reinicialização pendente: a execução real disputa o armazém de
+    # componentes com o Windows Update — aborta com orientação clara.
+    if (Test-PendingReboot) {
+        if ($script:IsDryRun) {
+            Write-Log 'AVISO: há uma reinicialização pendente (atualização do Windows). A simulação continua, mas reinicie o computador antes da execução real.' 'WARN'
+        } else {
+            Write-Log 'Reinicialização pendente detectada: o Windows aguarda um reboot de atualização.' 'ERROR'
+            Write-Log 'Reinicie o computador e execute a ferramenta novamente.' 'ERROR'
+            return 5
+        }
+    }
+
     # Carregar módulos dependentes de Windows.
     $okAppx = Import-CompatModule -Name 'Appx'
     $okDism = Import-CompatModule -Name 'Dism'
@@ -1199,6 +1322,7 @@ function Main {
     Write-Log ("   Removidos.....: {0}" -f $script:Stats.Removidos) 'INFO'
     Write-Log ("   Simulados.....: {0}" -f $script:Stats.Simulados) 'INFO'
     Write-Log ("   Protegidos....: {0}" -f $script:Stats.Protegidos) 'INFO'
+    Write-Log ("   Preservados...: {0}" -f $script:Stats.Preservados) 'INFO'
     Write-Log ("   Não encontr...: {0}" -f $script:Stats.NaoEncontr) 'INFO'
     Write-Log ("   Serviços......: {0}" -f $script:Stats.Servicos) 'INFO'
     Write-Log ("   Políticas.....: {0}" -f $script:Stats.Politicas) 'INFO'
