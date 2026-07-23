@@ -1,3 +1,5 @@
+<div align="center">
+
 # WinDebloat
 
 **Deixe seu Windows mais limpo, com segurança**
@@ -6,7 +8,9 @@
 [![Plataforma](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows&logoColor=white)](#requisitos)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-5391FE?style=flat-square&logo=powershell&logoColor=white)](#requisitos)
 [![Versão](https://img.shields.io/badge/Vers%C3%A3o-1.2.0-5C2D91?style=flat-square)](https://github.com/edsilas/WinDebloat/releases)
+[![Autor](https://img.shields.io/badge/Desenvolvido%20por-Edsilas-5C2D91?style=flat-square)](#licença-e-autoria)
 
+</div>
 
 ---
 
@@ -24,6 +28,7 @@ Windows.
 - [Introdução](#introdução)
 - [Referência do Launcher](#referência-do-launcher)
 - [Modos de otimização (padrão e agressivo)](#modos-de-otimização-padrão-e-agressivo)
+- [Escolher o que manter (Config.psd1)](#escolher-o-que-manter-configpsd1)
 - [Guia de uso](#guia-de-uso)
 - [Reverter alterações](#reverter-alterações)
 - [Perguntas frequentes](#perguntas-frequentes)
@@ -159,19 +164,35 @@ avisos, nesta ordem — ambos são normais:
 Em seguida, uma janela preta se abre com este menu:
 
 ```
-============================================
-   WinDebloat
-============================================
-   [1] Simulacao padrao      - nao altera nada   <-- recomendado primeiro
-   [2] Simulacao agressiva   - nao altera nada
-   [3] Execucao real padrao
-   [4] Execucao real agressiva
-   [5] Sair
-============================================
-   Desenvolvido por Edsilas
+ ==================================================================
+   WinDebloat  -  Limpeza segura para Windows 10/11
+ ==================================================================
+   Mecanismo ..: Windows PowerShell 5.1
+   Pasta ......: C:\...\WinDebloat
+   Listas .....: padrao [opcional: copie Config.exemplo.psd1]
+   Ultima acao : nenhuma nesta sessao
+ ------------------------------------------------------------------
+   SIMULACOES (mostram tudo sem alterar nada)
+   [1] Simulacao padrao        <-- recomendado primeiro
+   [2] Simulacao agressiva
 
- Escolha uma opcao [1/2/3/4/5]:
+   EXECUCOES REAIS (pedem confirmacao SIM)
+   [3] Execucao real padrao      remove apps, otimiza servicos
+   [4] Execucao real agressiva   inclui ajustes avancados
+
+   UTILITARIOS
+   [R] Ver ultimo relatorio      abre Debloat.log no Bloco de Notas
+   [B] Abrir pasta de backups    abre a pasta Recovery
+   [5] Sair
+ ==================================================================
+   Desenvolvido por Edsilas | Apache License 2.0
+
+ Escolha uma opcao [1/2/3/4/5/R/B]:
 ```
+
+O painel superior mostra a situação atual: qual PowerShell está em uso, a pasta
+do programa, se você tem um `Config.psd1` personalizado e o resultado da última
+ação da sessão. Ele é atualizado a cada retorno ao menu.
 
 Para escolher, digite o número da opção e pressione **Enter**.
 
@@ -204,6 +225,23 @@ a passo completo está em
 
 Encerra o programa. É a **única forma de fechar o Launcher**: as demais opções
 sempre retornam ao menu ao final. Nenhuma alteração é feita ao sair.
+
+### Opções R e B — Utilitários
+
+Dois atalhos de conveniência, que não alteram nada no sistema:
+
+- **[R] Ver último relatório** — abre o `Debloat.log` no Bloco de Notas, para
+  revisar a última simulação ou execução sem procurar a pasta manualmente.
+  Se ainda não houver relatório, o programa avisa e sugere rodar uma simulação.
+- **[B] Abrir pasta de backups** — abre a pasta `Recovery` no Explorador de
+  Arquivos, onde ficam o script de restauração de serviços, os arquivos `.reg`
+  e as listas de apps antes/depois.
+
+Ao final de cada ação, o programa também exibe um **painel de resultado** com a
+ação executada, a situação em linguagem clara (por exemplo, "sucesso, sem
+alertas" ou "reinicialização pendente; reinicie e rode de novo"), os caminhos
+dos relatórios e backups e, após execuções reais bem-sucedidas, o lembrete de
+reiniciar o computador.
 
 ### Modo direto (opcional)
 
@@ -270,6 +308,37 @@ diagnóstico ao mínimo suportado pela sua edição do Windows.
   sem alterar nada.
 - **Validação reforçada**: ao final, além das checagens existentes, a ferramenta
   confirma que **nenhum serviço crítico ficou desabilitado**.
+
+---
+
+## Escolher o que manter (Config.psd1)
+
+Usa o app Câmera? Gosta dos Alarmes? Você pode dizer à ferramenta o que
+**manter**, sem editar nenhum código:
+
+1. Na pasta do WinDebloat, faça uma **cópia** do arquivo `Config.exemplo.psd1`
+   e renomeie a cópia para **`Config.psd1`** (na mesma pasta do `Core.ps1`).
+2. Abra o `Config.psd1` com o **Bloco de Notas**. Dentro dele há a lista
+   completa de nomes válidos, com instruções.
+3. Para manter um item, **remova o `#`** do início da linha correspondente.
+   Exemplo, para manter a Câmera e os Alarmes:
+
+   ```
+   PreservarApps = @(
+       'Camera'
+       'Alarms'
+   )
+   ```
+
+4. Salve e rode a **Simulação**: os itens escolhidos aparecem marcados como
+   `PRESERVADO (Config.psd1)` e são contados no resumo.
+
+> [!NOTE]
+> O arquivo é opcional (sem ele, valem as listas padrão) e contém **apenas
+> dados** — nenhum código é executado a partir dele. Se o arquivo existir mas
+> tiver um erro de escrita, a ferramenta **para antes de alterar qualquer
+> coisa** e explica o problema, em vez de arriscar remover algo que você pediu
+> para manter.
 
 ---
 
@@ -444,6 +513,8 @@ política da empresa pode proibir alterações desse tipo.
 | O que aconteceu | O que fazer |
 | --- | --- |
 | Apareceu a tela azul "O Windows protegeu o computador" | É o SmartScreen avisando que o arquivo veio da internet. Clique em **Mais informações** e depois em **Executar assim mesmo** |
+| Mensagem "Reinicialização pendente detectada" e a execução parou | O Windows está no meio de uma atualização e aguarda um reboot. É uma proteção proposital: **reinicie o computador** e rode a ferramenta de novo |
+| Mensagem "Config.psd1 inválido" e a execução parou | Há um erro de escrita no seu arquivo de preferências. Abra-o no Bloco de Notas e compare com o `Config.exemplo.psd1` (atenção às aspas e ao `#`), ou renomeie-o temporariamente para rodar com as listas padrão |
 | A janela de permissão (UAC) não apareceu e o programa fechou sozinho | Clique com o botão direito em `Launcher.bat` e escolha **Executar como administrador** |
 | Apareceu "Core.ps1 nao encontrado" | Os arquivos foram separados ou o ZIP não foi extraído. Refaça a preparação em [Introdução](#introdução), mantendo tudo na mesma pasta |
 | Mensagem dizendo que o ponto de restauração não foi criado | A Restauração do Sistema está desligada no seu PC. O programa continua (os outros backups são feitos). Para ativar: **Iniciar** → digite "Criar um ponto de restauração" → selecione o disco **C:** → **Configurar** → **Ativar a proteção do sistema** → **OK** — e rode a ferramenta de novo |
@@ -483,6 +554,7 @@ organizado em regiões numeradas e comentado em português. Em resumo:
 | --- | --- |
 | Compatibilidade | Windows PowerShell 5.1 (nativo do Windows) e PowerShell 7+ (preferido automaticamente pelo Launcher, quando instalado) |
 | Execução direta do núcleo | `pwsh -File .\Core.ps1 -DryRun \| -Execute [-Aggressive] [-RootDir <pasta>] [-SkipRestorePoint]` — sem parâmetros, o padrão é a simulação; `-Aggressive` ativa o modo agressivo em qualquer combinação |
+| Personalizar sem editar código | Arquivo opcional `Config.psd1` (modelo em `Config.exemplo.psd1`), lido via `Import-PowerShellDataFile` — somente dados; chaves `PreservarApps` e `PreservarServicos`. Arquivo presente e inválido aborta com código 6; reinicialização pendente aborta a execução real com código 5 |
 | Personalizar a lista de remoção | Edite o mapa `$TargetApps` no `Core.ps1`; para preservar um app, apague a linha correspondente antes de executar |
 | Personalizar os serviços | Edite o mapa `$ServiceTargets` no `Core.ps1` (colunas `Start` = modo padrão, `Aggressive` = modo agressivo); serviços do filtro `$ProtectedServicesRegex` jamais são tocados |
 | Mecanismo de remoção | Dois níveis: usuários atuais e pacotes provisionados (novos usuários) |
@@ -513,3 +585,8 @@ comerciais, mantendo os créditos. O texto completo está no arquivo
 - Dúvidas ou problemas? Abra uma [issue](https://github.com/edsilas/WinDebloat/issues)
   anexando os arquivos da pasta `Logs`.
 
+<div align="center">
+
+**[Voltar ao topo](#windebloat)**
+
+</div>
