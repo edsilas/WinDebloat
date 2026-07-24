@@ -1,5 +1,3 @@
-<div align="center">
-
 # WinDebloat
 
 **Deixe seu Windows mais limpo, com segurança**
@@ -8,9 +6,7 @@
 [![Plataforma](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows&logoColor=white)](#requisitos)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%20%7C%207%2B-5391FE?style=flat-square&logo=powershell&logoColor=white)](#requisitos)
 [![Versão](https://img.shields.io/badge/Vers%C3%A3o-2.0.0-5C2D91?style=flat-square)](https://github.com/edsilas/WinDebloat/releases)
-[![Autor](https://img.shields.io/badge/Desenvolvido%20por-Edsilas-5C2D91?style=flat-square)](#licença-e-autoria)
 
-</div>
 
 ---
 
@@ -735,9 +731,3 @@ comerciais, mantendo os créditos. O texto completo está no arquivo
 - Rode sua primeira simulação seguindo o [Guia de uso](#guia-de-uso).
 - Dúvidas ou problemas? Abra uma [issue](https://github.com/edsilas/WinDebloat/issues)
   anexando os arquivos da pasta `Logs`.
-
-<div align="center">
-
-**[Voltar ao topo](#windebloat)**
-
-</div>
