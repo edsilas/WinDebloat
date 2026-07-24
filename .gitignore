@@ -1,0 +1,14 @@
+# Artefatos gerados em tempo de execução (não versionar)
+Logs/
+Recovery/
+
+# Configuração pessoal do usuário (o exemplo Config.exemplo.psd1 é versionado)
+Config.psd1
+
+# Arquivos temporários comuns do Windows
+Thumbs.db
+desktop.ini
+*.tmp
+
+# Arquivos de sistema do macOS
+.DS_Store
