@@ -239,6 +239,7 @@ if "%RC%"=="3"  set "RCMSG=modulo Appx indisponivel"
 if "%RC%"=="4"  set "RCMSG=falha no inventario do sistema"
 if "%RC%"=="5"  set "RCMSG=reinicializacao pendente; reinicie e rode de novo"
 if "%RC%"=="6"  set "RCMSG=Config.psd1 invalido; corrija ou renomeie o arquivo"
+if "%RC%"=="7"  set "RCMSG=outra execucao ja em andamento; aguarde e tente de novo"
 set "LASTRUN=%RUNDESC% (%RCMSG%)"
 echo.
 echo  ------------------------------------------------------------------

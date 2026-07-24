@@ -124,6 +124,9 @@ $script:Stats = [ordered]@{
 $script:PreserveApps     = @()
 $script:PreserveServices = @()
 
+# Trava de instância única (criada no Main; liberada ao final do script)
+$script:InstanceMutex = $null
+
 #endregion
 
 # ==========================================================================
@@ -1265,6 +1268,29 @@ function Main {
         return 2
     }
 
+    # Instância única: impede duas execuções simultâneas, que disputariam os
+    # logs, o hive do perfil padrão e o armazém de componentes do Windows.
+    # Mutex nomeado nativo do .NET; liberado no encerramento do script.
+    try {
+        $script:InstanceMutex = New-Object System.Threading.Mutex($false, 'Global\WinDebloat_Core_Lock')
+        $acquired = $false
+        try {
+            $acquired = $script:InstanceMutex.WaitOne(0)
+        } catch [System.Threading.AbandonedMutexException] {
+            # A instância anterior encerrou abruptamente; a trava agora é nossa.
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            Write-Log 'Outra execução do WinDebloat já está em andamento neste computador.' 'ERROR'
+            Write-Log 'Aguarde a outra janela terminar e tente novamente.' 'ERROR'
+            return 7
+        }
+    } catch {
+        # Falha ao criar a trava (ex.: ACL de outra sessão): prossegue com aviso,
+        # pois a trava é proteção adicional, não requisito da execução.
+        Write-Log "Trava de instância única indisponível: $($_.Exception.Message)" 'WARN'
+    }
+
     # Preferências do usuário (Config.psd1 opcional). Arquivo presente e
     # inválido aborta: prosseguir poderia remover o que ele pediu para manter.
     if (-not (Read-UserConfig)) { return 6 }
@@ -1293,7 +1319,7 @@ function Main {
     }
 
     try {
-        $inv = Get-SystemInventory
+        $null = Get-SystemInventory
     } catch {
         Write-Log "Inventário falhou: $($_.Exception.Message)" 'ERROR'
         return 4
@@ -1335,19 +1361,29 @@ function Main {
         Write-Log 'EXECUÇÃO concluída. Reinicie o sistema para finalizar as alterações.' 'OK'
     }
 
-    # Lista final de apps removidos (snapshot para auditoria).
-    try {
-        $after = Join-Path $script:RecoveryDir ("Appx_Apos_{0}.txt" -f $script:Stamp)
-        Get-AppxPackage -AllUsers | Select-Object Name, Version |
-            Sort-Object Name | Format-Table -AutoSize | Out-String |
-            Set-Content -LiteralPath $after -Encoding UTF8
-    } catch { }
+    # Lista final de apps removidos (snapshot para auditoria). Apenas na
+    # execução real: em simulação nada muda, e o arquivo seria idêntico ao
+    # baseline já salvo.
+    if (-not $script:IsDryRun) {
+        try {
+            $after = Join-Path $script:RecoveryDir ("Appx_Apos_{0}.txt" -f $script:Stamp)
+            Get-AppxPackage -AllUsers | Select-Object Name, Version |
+                Sort-Object Name | Format-Table -AutoSize | Out-String |
+                Set-Content -LiteralPath $after -Encoding UTF8
+        } catch { }
+    }
 
     if ($script:Stats.Erros -gt 0 -or -not $valOk) { return 1 }
     return 0
 }
 
 $exit = Main
+# Libera a trava de instância única (ReleaseMutex falha inofensivamente se a
+# trava não chegou a ser adquirida — ex.: saída pelo código 7).
+if ($script:InstanceMutex) {
+    try { $script:InstanceMutex.ReleaseMutex() } catch { }
+    try { $script:InstanceMutex.Dispose() } catch { }
+}
 exit $exit
 
 #endregion
